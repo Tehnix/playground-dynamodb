@@ -75,7 +75,8 @@ const main = async () => {
           .promise()
       )
     );
-  } catch (err) {
+    console.log("Done populating the data!");
+  } catch (err: any) {
     console.error(err);
     if (err.code === "ConditionalCheckFailedException") {
       console.log(
@@ -99,16 +100,17 @@ const main = async () => {
           pk: "5a1590a74502cdfec74a34cd690eb75d07ad822804f9e346f562138187665f25",
           sk: "nomineeProfile",
         },
-        UpdateExpression: "SET firstName = :val, version = :incVersion",
+        UpdateExpression: "SET firstName = :val ADD version :incr",
         ConditionExpression: "version = :version",
         ExpressionAttributeValues: {
           ":val": "Johnny",
           ":version": 1,
-          ":incVersion": 2,
+          ":incr": 1,
         },
       })
       .promise();
-  } catch (err) {
+    console.log("Done updating the item!");
+  } catch (err: any) {
     console.error(err);
     if (err.code === "ConditionalCheckFailedException") {
       console.log(
@@ -120,7 +122,63 @@ const main = async () => {
       );
     }
   }
-  console.log("Done!");
+
+  // Finally, we'll try to make a transaction that'll fail if we have already run it.
+  try {
+    await ddb
+      .transactWrite({
+        TransactItems: [
+          {
+            // Update the updatedAt attribute if it does not exist.
+            Update: {
+              TableName: "study-club-session",
+              Key: {
+                pk: "5a1590a74502cdfec74a34cd690eb75d07ad822804f9e346f562138187665f25",
+                sk: "nomineeProfile",
+              },
+              UpdateExpression: "SET #updatedAt = :val",
+              ConditionExpression: "attribute_not_exists(#updatedAt)",
+              ExpressionAttributeNames: {
+                "#updatedAt": "updatedAt",
+              },
+              ExpressionAttributeValues: {
+                ":val": "2022-10-17T00:00:00.000Z",
+              },
+            },
+          },
+          {
+            // Update the counter of the version number by incrementing it atomically.
+            Update: {
+              TableName: "study-club-session",
+              Key: {
+                pk: "3d79b92812b46635a6ad15a6923213022f470a62b18608d1f993df9b518aad78",
+                sk: "nomineeProfile",
+              },
+              UpdateExpression: "ADD #version :incrVersion",
+              ExpressionAttributeNames: {
+                "#version": "version",
+              },
+              ExpressionAttributeValues: {
+                ":incrVersion": 1,
+              },
+            },
+          },
+        ],
+      })
+      .promise();
+    console.log("Done updating via a transaction!");
+  } catch (err: any) {
+    console.error(err);
+    if (err.code === "TransactionCanceledException") {
+      console.log(
+        "We've already run the transaction, so this error is expected. Adjust the ConditionExpression to overwrite the data."
+      );
+    } else {
+      console.log(
+        "Something unexpected happened, check the error above for more details."
+      );
+    }
+  }
 };
 
 main()
