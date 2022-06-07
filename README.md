@@ -1,6 +1,10 @@
 # Playground: DynamoDB
 About Playground to play around with and show DynamoDB usage
 
+There are two branches:
+- `master`: Uses AWS SDK v3
+- `aws-sdk-v2`: Uses AWS SDK v2
+
 ## Getting Started 🚀
 
 Install the various dependencies:
