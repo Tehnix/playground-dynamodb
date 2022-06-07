@@ -1,14 +1,17 @@
-import AWS from "aws-sdk";
-
-// Confignure the AWS client.
-AWS.config.update({
-  region: "eu-central-1",
-});
+import { DynamoDB } from "@aws-sdk/client-dynamodb";
+import {
+  DynamoDBDocumentClient,
+  PutCommand,
+  UpdateCommand,
+  TransactWriteCommand,
+} from "@aws-sdk/lib-dynamodb";
 
 // Set up a DynamoDB document client that we can interact with.
-const ddb = new AWS.DynamoDB.DocumentClient({
+const ddbClient = new DynamoDB({
   apiVersion: "2012-08-10",
+  region: "eu-central-1",
 });
+const client = DynamoDBDocumentClient.from(ddbClient);
 
 const exampleData = [
   {
@@ -65,20 +68,20 @@ const main = async () => {
   try {
     await Promise.all(
       exampleData.map(async (item) =>
-        ddb
-          .put({
+        client.send(
+          new PutCommand({
             TableName: "study-club-session",
             Item: item,
             // Use a condition expression to ensure we do not overwrite any records.
             ConditionExpression: "attribute_not_exists(pk)",
           })
-          .promise()
+        )
       )
     );
     console.log("Done populating the data!");
   } catch (err: any) {
     console.error(err);
-    if (err.code === "ConditionalCheckFailedException") {
+    if (err.name === "ConditionalCheckFailedException") {
       console.log(
         "We've already set up the data, so this error is expected. Remove the ConditionExpression to overwrite the data."
       );
@@ -93,8 +96,8 @@ const main = async () => {
   // we're not overwriting any other changes. This means that a second run would be expected to
   // throw a ConditionalCheckFailedException.
   try {
-    await ddb
-      .update({
+    await client.send(
+      new UpdateCommand({
         TableName: "study-club-session",
         Key: {
           pk: "5a1590a74502cdfec74a34cd690eb75d07ad822804f9e346f562138187665f25",
@@ -108,11 +111,11 @@ const main = async () => {
           ":incr": 1,
         },
       })
-      .promise();
+    );
     console.log("Done updating the item!");
   } catch (err: any) {
     console.error(err);
-    if (err.code === "ConditionalCheckFailedException") {
+    if (err.name === "ConditionalCheckFailedException") {
       console.log(
         "We've already updated the data and version field, so this error is expected. Adjust the ConditionExpression to overwrite the data."
       );
@@ -125,8 +128,8 @@ const main = async () => {
 
   // Finally, we'll try to make a transaction that'll fail if we have already run it.
   try {
-    await ddb
-      .transactWrite({
+    await client.send(
+      new TransactWriteCommand({
         TransactItems: [
           {
             // Update the updatedAt attribute if it does not exist.
@@ -165,14 +168,19 @@ const main = async () => {
           },
         ],
       })
-      .promise();
+    );
     console.log("Done updating via a transaction!");
   } catch (err: any) {
     console.error(err);
-    if (err.code === "TransactionCanceledException") {
+    if (err.name === "TransactionCanceledException") {
       console.log(
         "We've already run the transaction, so this error is expected. Adjust the ConditionExpression to overwrite the data."
       );
+      if (err.CancellationReasons[0].Code === "ConditionalCheckFailed") {
+        console.log("The first condition check failed.");
+      } else if (err.CancellationReasons[1].Code === "ConditionalCheckFailed") {
+        console.log("The second condition check failed.");
+      }
     } else {
       console.log(
         "Something unexpected happened, check the error above for more details."
